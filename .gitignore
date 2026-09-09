@@ -1,0 +1,49 @@
+# Vivado
+*.jou
+*.log
+*.str
+*.zip
+*.tmp
+*.rst
+*.debug
+.Xil/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+*.srcs/.Xil/
+*.gen/
+*.xpr.bak
+vivado_pid*.str
+hs_err_pid*
+
+# Generated bitstream / reports (keep sources, not build products)
+*.bit
+*.bin
+*.ltx
+*.mcs
+*.prm
+
+# Icarus Verilog / GTKWave
+*.vcd
+*.fst
+*.ghw
+a.out
+*.vvp
+
+# Python / cocotb
+__pycache__/
+*.py[cod]
+.pytest_cache/
+sim_build/
+*.egg-info/
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+*.code-workspace
