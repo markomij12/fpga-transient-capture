@@ -1,44 +1,47 @@
 # FPGA Transient Capture & Trigger Core
 
-An FPGA digitizer that watches a PCB load-step, triggers on the voltage droop, buffers the waveform, and streams it to a host for comparison against a PDN solver prediction.
+An FPGA digitizer that watches a PCB load-step, triggers on the voltage droop, buffers the waveform, and streams it to a host.
 
-This repo is the working documentation and HDL for that design.
+This repo is the working documentation and HDL for that design. Resume-facing project; PDN solver overlay is a stretch goal.
 
-## What it is
+## Locked decisions
 
-Five blocks, one design:
+- **Resume-ready:** five RTL blocks, a self-checking cocotb test per block, a bitstream on a real Artix-7 board, and a plotted capture of a real analog step (function generator is enough).
+- **Stretch:** overlay that capture against a PDN solver.
+- **Language:** SystemVerilog RTL, cocotb testbenches, Icarus Verilog for fast sim.
+- **Clock / UART:** 100 MHz, 115200 8N1 (`CLKS_PER_BIT = 868` on hardware).
+- **Hardware, in order:** borrow from lab (any Artix-7 Digilent board with Pmod) → else buy Basys 3 ($165) + Pmod AD1 ($30). Arty A7-35T is retired; do not buy it new. Arty A7-100T ($314) is overkill.
 
-1. **ADC interface FSM** — SPI (or onboard ADC) read state machine at a fixed sample rate
-2. **Trigger-detect logic** — comparator against a programmable threshold; detects the droop edge
-3. **Circular buffer (BRAM)** — continuous pre-trigger / post-trigger capture; freezes on trigger
-4. **UART TX core** — streams the captured buffer to a PC for logging and plotting
-5. **Top-level integration** — wired together, with a self-checking testbench per block
+## Blocks
 
-## Target hardware
-
-- Board: Digilent Arty A7-35T (Xilinx Artix-7)
-- ADC: Digilent Pmod AD1 / AD2 (or equivalent SPI ADC on a Pmod header)
-
-## Tooling
-
-- Xilinx Vivado (WebPACK) — synthesis, P&R, bitstream
-- Icarus Verilog + GTKWave — fast RTL iteration
-- cocotb — Python testbenches
-- Serial terminal (`minicom` / `screen`) — UART debug
-
-## Build order
-
-Do these in sequence. Do not skip.
-
-1. Blink an LED — toolchain, constraints, and bitstream flow
-2. UART TX core — simulate, then loop bytes to a laptop terminal
-3. Circular buffer + trigger — simulate against a fake sawtooth / step waveform
-4. Real ADC over SPI — debug on hardware with a function generator or the PCB
-5. Full integration — capture a real load-step droop, export, compare to the solver
-6. Write-up — block diagram, waveform screenshot, solver-vs-hardware plot
+1. **ADC interface FSM** — SPI read state machine, fixed sample rate
+2. **Trigger-detect logic** — programmable threshold, droop edge
+3. **Circular buffer (BRAM)** — pre-trigger / post-trigger capture
+4. **UART TX core** — stream the captured buffer to a PC
+5. **Top-level integration** — one design, one bitstream
 
 ## Status
 
-Planning. HDL not started.
+UART TX is in simulation. No board yet. Dated notes live in [`LOG.md`](LOG.md).
+
+## Simulate (no FPGA required)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+# also: brew install icarus-verilog
+pytest tb/test_uart_tx.py
+```
+
+## Build order
+
+1. UART TX — simulate (current)
+2. Blink an LED once a board exists — toolchain + constraints
+3. UART on hardware — loop bytes to a laptop terminal
+4. Circular buffer + trigger — simulate against a fake step
+5. Real ADC over SPI
+6. Capture a real analog step and plot it
+7. Stretch: solver-vs-hardware plot
 
 See `FPGA_Tinkering_Plan.pdf` for the original scoping note.
