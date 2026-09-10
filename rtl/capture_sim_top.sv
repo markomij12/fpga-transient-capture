@@ -1,0 +1,105 @@
+// Sim-only capture path: ADC model -> SPI -> trigger/buffer -> UART dump.
+// Not a board top; no XDC, no LEDs.
+module capture_sim_top #(
+    parameter int DEPTH              = 32,
+    parameter int WIDTH              = 12,
+    parameter int PRE_TRIGGER        = 8,
+    parameter int HYSTERESIS         = 4,
+    parameter int CLKS_PER_BIT       = 8,
+    parameter int CLKS_PER_SCLK      = 2,
+    parameter int SAMPLE_PERIOD_CLKS = 40
+) (
+    input  logic        clk,
+    input  logic        rst,
+    input  logic        arm,
+    input  logic [11:0] analog_code,
+    input  logic [11:0] threshold,
+    output logic [1:0]  status,
+    output logic        capture_ready,
+    output logic        dump_done,
+    output logic        tx
+);
+
+    logic        enable;
+    logic        cs_n;
+    logic        sclk;
+    logic        sdata;
+    logic [11:0] sample;
+    logic        sample_valid;
+    logic        ready_d;
+    logic        dump_start;
+    logic [$clog2(DEPTH)-1:0] rd_addr;
+    logic [$clog2(DEPTH)-1:0] oldest_addr;
+    logic [WIDTH-1:0]         rd_data;
+    logic        dump_busy;
+
+    assign enable = 1'b1;
+
+    adc_spi #(
+        .CLKS_PER_SCLK     (CLKS_PER_SCLK),
+        .SAMPLE_PERIOD_CLKS(SAMPLE_PERIOD_CLKS)
+    ) u_adc (
+        .clk         (clk),
+        .rst         (rst),
+        .enable      (enable),
+        .cs_n        (cs_n),
+        .sclk        (sclk),
+        .sdata       (sdata),
+        .sample      (sample),
+        .sample_valid(sample_valid)
+    );
+
+    adc_ad7476a_model u_adc_model (
+        .cs_n       (cs_n),
+        .sclk       (sclk),
+        .sdata      (sdata),
+        .analog_code(analog_code)
+    );
+
+    capture_ctrl #(
+        .DEPTH      (DEPTH),
+        .WIDTH      (WIDTH),
+        .PRE_TRIGGER(PRE_TRIGGER),
+        .HYSTERESIS (HYSTERESIS)
+    ) u_cap (
+        .clk          (clk),
+        .rst          (rst),
+        .arm          (arm),
+        .sample_valid (sample_valid),
+        .sample       (sample),
+        .threshold    (threshold),
+        .status       (status),
+        .capture_ready(capture_ready),
+        .oldest_addr  (oldest_addr),
+        .rd_addr      (rd_addr),
+        .rd_data      (rd_data)
+    );
+
+    uart_dump #(
+        .DEPTH       (DEPTH),
+        .WIDTH       (WIDTH),
+        .PRE_TRIGGER (PRE_TRIGGER),
+        .CLKS_PER_BIT(CLKS_PER_BIT)
+    ) u_dump (
+        .clk        (clk),
+        .rst        (rst),
+        .start      (dump_start),
+        .rd_data    (rd_data),
+        .oldest_addr(oldest_addr),
+        .rd_addr    (rd_addr),
+        .tx         (tx),
+        .busy       (dump_busy),
+        .done       (dump_done)
+    );
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            ready_d     <= 1'b0;
+            dump_start  <= 1'b0;
+        end else begin
+            ready_d    <= capture_ready;
+            dump_start <= capture_ready & ~ready_d;
+        end
+    end
+
+endmodule

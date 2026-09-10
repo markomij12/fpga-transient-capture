@@ -4,6 +4,46 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — integration sim top
+
+### Shipped
+
+- `rtl/uart_dump.sv` — walks frozen BRAM in chronological order, emits the locked TC frame through existing `uart_tx`.
+- `rtl/capture_sim_top.sv` — ADC model → `adc_spi` → `capture_ctrl` → `uart_dump`. No board pins.
+- `tb/test_capture_sim_top.py` — fake analog step, one UART dump, `parse_frame` checks pre high / trigger+post low.
+- `pytest tb/test_capture_sim_top.py` — 1/1 passed.
+
+### Why this wiring
+
+Dump is a separate FSM so UART bit timing does not sit inside the capture controller. `dump_start` is a rising edge of `capture_ready`. BRAM `rd_data` is registered: set `rd_addr`, wait one clock, then issue both LE bytes. XOR accumulates while sending header+samples, then the XOR byte and CRLF.
+
+Sim defaults are small (`DEPTH=32`, `PRE=8`, `CLKS_PER_BIT=8`, `CLKS_PER_SCLK=2`, `SAMPLE_PERIOD_CLKS=40`) so the dump finishes in tens of microseconds of sim time. Hardware defaults stay on the leaf modules (2048/512/868/5/100).
+
+Icarus: compile with `-s capture_sim_top` and every RTL file plus `tb/adc_ad7476a_model.sv`. `always @(*)` for the dump byte mux — `always_comb` bit-selects warn on Icarus 13.
+
+### Alternatives considered
+
+- **Rejected: dumping from Python by peeking BRAM.** Would not prove UART framing or `uart_tx` handshake.
+- **Rejected: packing 12-bit on the wire here.** Frame is already locked as 16-bit LE.
+
+### Timing numbers
+
+- UART start bit begins the clock after `tx_start` is sampled in IDLE (unchanged `uart_tx`).
+- 74-byte sim frame at `CLKS_PER_BIT=8` ≈ 5920 clocks of UART plus ~32 sample periods to fill.
+- Hardware dump of 2048 samples: 4106 bytes × 10 bits / 115200 ≈ 0.36 s.
+
+### Explain out loud
+
+- How does chronological dump survive wrap? (`oldest_addr`, then +1 wrap)
+- When does dump start relative to READY? (rising edge, one-cycle `dump_start`)
+- How do we freeze without losing the crossing sample? (still: write, pulse next cycle, last pre)
+
+### Open questions
+
+Board top / XDC once a Pmod is plugged in. This sim top is not that file.
+
+---
+
 ## 2026-09-09 — UART dump frame + host logger
 
 ### Shipped
