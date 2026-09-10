@@ -4,6 +4,43 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — trigger detect
+
+### Shipped
+
+- `rtl/trigger_detect.sv` — programmable threshold, falling (droop) edge, hysteresis re-arm, 1-cycle registered pulse.
+- `tb/test_trigger_detect.py` — idle, disarmed, one-shot falling cross, no retrigger below threshold, re-arm after hysteresis, rising step ignored.
+- `pytest tb/test_trigger_detect.py` — 6/6 passed. Existing `pytest tb/test_uart_tx.py` still green.
+
+### Why this FSM / timing
+
+Droop is a falling ADC-code cross, not “any sample below threshold,” so a load-step fires once. The pulse is registered **one cycle after** `sample_valid` so the BRAM write of the crossing sample has already happened, and the controller sees a clean strobe. After a fire, stay deaf until `sample >= threshold + HYSTERESIS` (add saturates at `{WIDTH{1'b1}}`) so noise around the threshold cannot retrigger. Unsigned compares: these are codes, not volts. `arm=0` still tracks the last sample so the first armed edge is real.
+
+Default hardware `HYSTERESIS=16` (~4 mV if 3.3 V / 4096). Tests use 4.
+
+### Alternatives considered
+
+- **Rejected: level trigger** (pulse every sample below threshold). That would retrigger for the entire droop and fill the post-window from a mess of extra pulses. The controller also ignores pulses outside FILLING, but the detector itself must be interview-defendable standalone.
+- **Rejected: combinational same-cycle pulse.** Faster, but glitchy for BRAM enable/trigger in one NBA region, and it would freeze-before-write if the buffer sampled trigger in the same cycle as `wr_en`.
+
+### Timing numbers
+
+- Sysclk 100 MHz. `sample_valid` is a 1-cycle strobe (hardware: every 100 clocks at 1 MSPS).
+- `trigger_pulse` is 1 cycle, one clock after the crossing strobe.
+- UART unchanged: 115200 8N1, `CLKS_PER_BIT=868` hardware / 8 in sim.
+
+### Explain out loud
+
+- Why falling-only, not “below threshold”?
+- Why hysteresis, and what saturating the add prevents?
+- Why is the pulse late by one clock — and how does that protect the crossing sample?
+
+### Open questions
+
+None. Threshold is a port (testbench / later host), not a bitstream constant.
+
+---
+
 ## 2026-09-09
 
 ### Shipped
