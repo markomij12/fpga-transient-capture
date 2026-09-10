@@ -4,6 +4,33 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — README (commands + both tops)
+
+### Shipped
+
+- `README.md` — status includes CT commands, synthesizable top, and GHA.
+- Module table: `uart_rx`, `host_cmd`, `capture_top`.
+- CT command format documented next to the locked TC dump format.
+- `capture_sim_top` vs `capture_top` table (ADC model vs SPI pins, poke/UART vs button/UART, sim vs hardware defaults).
+- Local CI: `pytest tb/` (same as `.github/workflows/sim.yml`).
+- Vivado still notes-only. No XDC, no bitstream, no `--port`.
+
+### Why this README pass
+
+The sim-complete note was true before host UART existed. A reviewer now needs CT vs TC, and which top to synth later, without reading LOG. Build order gained a done step for RX/commands/top so the next item is still honestly “blink an LED once a board exists.”
+
+### Explain out loud
+
+- Which magic is host→FPGA vs FPGA→host?
+- Why does `capture_top` not have `analog_code`?
+- What command does CI run, and why is Vivado still not in that path?
+
+### Open questions
+
+Which lab board, if any. Same as before.
+
+---
+
 ## 2026-09-09 — GitHub Actions sim CI
 
 ### Shipped
