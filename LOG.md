@@ -4,6 +4,32 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — README / Vivado notes
+
+### Shipped
+
+- `README.md` — sim-complete status, module list, UART frame, every pytest command, Vivado-later notes.
+- `pytest.ini` — ignore `tb/sim_build` so `pytest tb/` does not walk waveform junk.
+- `pytest tb/` — 12 passed, 1 skipped (PNG import). No WebPACK download. No `.xdc`. No bitstream.
+
+### Why notes-only
+
+Vivado WebPACK is tens of GB and only pays off once a board (lab Artix-7 + Pmod, or buy-fallback Basys 3 + Pmod AD1) is in hand. Pin maps for Basys 3 vs Arty A7 would be fiction until that choice is real. Simulation is the resume-defendable work until then.
+
+Rejected writing a placeholder XDC “so the repo looks finished.” A wrong constraint file is worse in an interview than an honest “blocked on hardware.”
+
+### Explain out loud
+
+- What is proven without a board? (ADC model → trigger → BRAM → UART frame → parser)
+- What is still blocked? (LED blink, loopback, real AD7476A, analog-step plot)
+- Why Basys 3 + Pmod AD1, not Arty A7-35T / A7-100T?
+
+### Open questions
+
+Which lab board, if any.
+
+---
+
 ## 2026-09-09 — integration sim top
 
 ### Shipped
