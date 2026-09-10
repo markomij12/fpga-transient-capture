@@ -4,6 +4,50 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — ADC SPI (AD7476A)
+
+### Shipped
+
+- `rtl/adc_spi.sv` — Mode 3 SPI master, 16 SCLK, fixed sample rate, 12-bit `sample` + `sample_valid`.
+- `tb/adc_ad7476a_model.sv` — sim-only part model (latches on CS fall). Idle SDATA is `0`, not `Z` (Icarus X-propagates `1'bz`; the real part three-states).
+- `tb/adc_spi_tb.sv` — wrapper so cocotb sees one toplevel.
+- `tb/test_adc_spi.py` — idle, 16 SCLK falls/sample, known codes `000/FFF/A50/5A5/001/800`, `sample_valid` period, leading zeros stripped.
+- `pytest tb/test_adc_spi.py` — 5/5 passed.
+
+### Why this SPI / timing
+
+AD7476A `tCONVERT = 16 × tSCLK`. Four leading zeros then 12-bit MSB first. CS falling is the sample instant and clocks out the first leading zero. Remaining bits shift on SCLK falling; FPGA samples on rising (Mode 3 / CPOL=1 CPHA=1). DB11..DB0 are rising edges **4–15**. The 16th rising sample is Hi-Z and is ignored, but the 16th falling edge still has to happen — raising CS early **aborts** the conversion.
+
+Hardware: `CLKS_PER_SCLK=5` → 20 MHz (datasheet max). `SAMPLE_PERIOD_CLKS=100` → **1.00 MSPS**. 16×5 = 80 clocks converting, 20 clocks CS high = 200 ns quiet > 50 ns `tQUIET`. Low/high 2+3 clocks meets t5/t6 ≥ 0.4 period. Channel **D0 only** (Pmod AD1 pin 2); D1 unused.
+
+Sim: `CLKS_PER_SCLK=2`, `SAMPLE_PERIOD_CLKS=40` (≥ 16×2+5).
+
+### Alternatives considered
+
+- **Rejected: Mode 0** (SCLK idle low). Does not match the datasheet idle-high clock.
+- **Rejected: `CLKS_PER_SCLK=4` (25 MHz).** Over the 20 MHz max.
+- **Rejected: fewer than 16 SCLKs / early CS.** Aborts conversion.
+- **Rejected: Python bit-bang SDATA.** Weaker interview artifact than an SV model.
+- **Rejected: on-chip XADC.** Fallback only; the resume block is the SPI FSM.
+
+### Timing numbers
+
+- 100 MHz sysclk. SCLK 20 MHz. Sample 1 MSPS. UART still 115200 / 868.
+- `t2` CS→SCLK ≥ 10 ns: 1 sysclk of CS low, SCLK high, then first fall.
+
+### Explain out loud
+
+- Why 16 SCLK cycles on AD7476A?
+- When is the analog input sampled? (CS falling)
+- Which rising edges are DB11..DB0, and why ignore the 16th?
+- Why idle SDATA=0 in the model?
+
+### Open questions
+
+None for one channel. Dual-channel D0+D1 is out of scope.
+
+---
+
 ## 2026-09-09 — capture controller
 
 ### Shipped
