@@ -4,6 +4,45 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — capture controller
+
+### Shipped
+
+- `rtl/capture_ctrl.sv` — glue: instantiates `trigger_detect` + `circ_buffer`. Status `IDLE / FILLING / TRIGGERED / READY`.
+- Exposed `oldest_addr` (not in the first port sketch) so UART dump can walk chronological samples without reaching into the BRAM.
+- `tb/test_capture_ctrl.py` — arm→fill→trigger→ready, `capture_ready` only in READY, second arm starts a new fill, status encoding.
+- `pytest tb/test_capture_ctrl.py` — 4/4 passed.
+
+### Why this FSM
+
+The trigger stays a pure edge detector and the buffer stays a dumb ring. IDLE waits for an arm strobe and pulses `clear`; FILLING writes every `sample_valid` and arms the detector only after `pre_filled`; TRIGGERED keeps writing and ignores extra pulses; READY is `frozen` and another arm starts a new fill. `status` is the FSM; `capture_ready` is READY-only.
+
+`arm` on the controller is a **1-cycle strobe**. `arm` on the detector is a **level** (`FILLING && pre_filled`). READY is one cycle after `frozen` because the FSM is registered.
+
+Icarus: compile with `-s capture_ctrl` and all three sources, otherwise iverilog elaborates the first file and reports `Unknown module type: trigger_detect`.
+
+### Alternatives considered
+
+- **Rejected: folding the FSM into `trigger_detect`.** Mixes policy with the edge detector; worse interview story and worse standalone tests.
+- **Rejected: auto-dump from READY.** Dump is a separate module so UART timing does not pollute capture.
+
+### Timing numbers
+
+- Sim: `DEPTH=16`, `PRE=4`, `HYSTERESIS=4`, `sample_valid` strobes with a 3-cycle gap (not every clock).
+- Hardware defaults: 2048 / 512 / 16.
+
+### Explain out loud
+
+- Strobe vs level `arm`.
+- When does FILLING become triggerable? (`pre_filled`)
+- Why expose `oldest_addr` from the controller, not only the buffer?
+
+### Open questions
+
+None.
+
+---
+
 ## 2026-09-09 — circular buffer
 
 ### Shipped
