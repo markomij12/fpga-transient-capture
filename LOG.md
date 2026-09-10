@@ -4,6 +4,43 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — capture_sim_top host UART
+
+### Shipped
+
+- `rtl/capture_sim_top.sv` — added `rx`. Instantiates `uart_rx` + `host_cmd`.
+- Threshold pin **removed**. One source: `host_cmd` (default `0x800`). `analog_code` stays a TB pin.
+- TB `arm` poke is OR'd with UART `arm_pulse` so the original poke-arm path still works.
+- `tb/test_capture_sim_top.py` — poke-arm dump still green; new test bit-bangs CT SET_THRESH (`0xB00`) then CT ARM on `rx`, drops analog `0xC00` → `0xA00` (below 0xB00, **above** default 0x800), parses TC dump on `tx`.
+- `pytest tb/` — 14 passed, 1 skipped (PNG import). Dump still starts on `capture_ready` rising edge, not on arm.
+
+### Why drop the threshold pin
+
+Two inputs fighting over `capture_ctrl.threshold` would make a passing poke test prove nothing about UART SET_THRESH. Default `0x800` plus a droop to `0x100` would also fire if SET_THRESH were ignored. The UART test therefore uses a cut (`0xB00`) and a droop code (`0xA00`) that only crosses if the command landed.
+
+### Alternatives considered
+
+- **Rejected: keeping the threshold pin and ignoring it.** A dead port is a lie in an interview.
+- **Rejected: removing the `arm` poke.** The original test is a useful bypass of UART bit timing; OR is honest (button vs UART will do the same on the board top).
+
+### Timing numbers
+
+- Command bytes on `rx` use the same `CLKS_PER_BIT=8` as the dump on `tx`.
+- SET_THRESH is 8 bytes × 10 bits × 8 clocks; ARM is 6 bytes. Parser pulses `arm` one clock after `rx_valid` (NBA from `uart_rx`).
+- Dump still: rising `capture_ready` → 1-cycle `dump_start`.
+
+### Explain out loud
+
+- Why is threshold not a top-level pin anymore?
+- How does the UART test prove SET_THRESH, not just the default 0x800?
+- Why OR poke-arm with UART arm rather than deleting the poke?
+
+### Open questions
+
+Synthesizable `capture_top` (no ADC model) with `arm_btn` sync.
+
+---
+
 ## 2026-09-09 — host_cmd (CT command format)
 
 ### Shipped

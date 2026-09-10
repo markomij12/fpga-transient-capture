@@ -1,5 +1,6 @@
 // Sim-only capture path: ADC model -> SPI -> trigger/buffer -> UART dump.
-// Not a board top; no XDC, no LEDs.
+// Host CT commands on rx (SET_THRESH / ARM). analog_code stays a TB pin.
+// Threshold comes only from host_cmd (default 0x800). Not a board top.
 module capture_sim_top #(
     parameter int DEPTH              = 32,
     parameter int WIDTH              = 12,
@@ -12,8 +13,8 @@ module capture_sim_top #(
     input  logic        clk,
     input  logic        rst,
     input  logic        arm,
+    input  logic        rx,
     input  logic [11:0] analog_code,
-    input  logic [11:0] threshold,
     output logic [1:0]  status,
     output logic        capture_ready,
     output logic        dump_done,
@@ -32,8 +33,35 @@ module capture_sim_top #(
     logic [$clog2(DEPTH)-1:0] oldest_addr;
     logic [WIDTH-1:0]         rd_data;
     logic        dump_busy;
+    logic        rx_valid;
+    logic [7:0]  rx_data;
+    logic        arm_pulse;
+    logic [11:0] threshold;
+    logic        cmd_error;
+    logic        arm_or;
 
     assign enable = 1'b1;
+    assign arm_or = arm | arm_pulse;
+
+    uart_rx #(
+        .CLKS_PER_BIT(CLKS_PER_BIT)
+    ) u_rx (
+        .clk     (clk),
+        .rst     (rst),
+        .rx      (rx),
+        .rx_valid(rx_valid),
+        .rx_data (rx_data)
+    );
+
+    host_cmd u_cmd (
+        .clk      (clk),
+        .rst      (rst),
+        .rx_valid (rx_valid),
+        .rx_data  (rx_data),
+        .arm_pulse(arm_pulse),
+        .threshold(threshold),
+        .cmd_error(cmd_error)
+    );
 
     adc_spi #(
         .CLKS_PER_SCLK     (CLKS_PER_SCLK),
@@ -64,7 +92,7 @@ module capture_sim_top #(
     ) u_cap (
         .clk          (clk),
         .rst          (rst),
-        .arm          (arm),
+        .arm          (arm_or),
         .sample_valid (sample_valid),
         .sample       (sample),
         .threshold    (threshold),
