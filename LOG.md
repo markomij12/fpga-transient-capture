@@ -4,6 +4,38 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — GitHub Actions sim CI
+
+### Shipped
+
+- `.github/workflows/sim.yml` — on push/PR to `main`: Ubuntu, Icarus (`iverilog`), Python 3.12 venv, `pip install -r requirements.txt`, `pytest tb/`.
+- No Vivado. `sim_build/` stays gitignored; PNG skip in logger tests is fine.
+
+### Why this job
+
+The resume claim is “self-checking cocotb on Icarus.” A laptop-only green suite bit-rots. GHA Ubuntu + apt `iverilog` is the cheapest way to re-run the same `pytest tb/` a reviewer can run locally. Vivado WebPACK is tens of GB and is not needed until a board exists.
+
+### Alternatives considered
+
+- **Rejected: a Vivado/CI bitstream job.** No XDC, no board, no license dance.
+- **Rejected: verilator.** The suite is written and passing on Icarus; switching runners now is churn.
+
+### Timing numbers
+
+- Local cached `pytest tb/`: ~3 s. Cold iverilog rebuild of every block: a couple of minutes.
+- GHA will be cold each run (no `sim_build/` in git).
+
+### Explain out loud
+
+- What does CI prove that a local pytest does not? (reproducible Ubuntu + Icarus, not “works on my Homebrew”)
+- Why is Vivado not in the workflow?
+
+### Open questions
+
+README: `capture_top` vs `capture_sim_top`, CT format, how to run the same command CI runs.
+
+---
+
 ## 2026-09-09 — capture_top (synthesizable)
 
 ### Shipped
