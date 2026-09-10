@@ -4,6 +4,43 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — circular buffer
+
+### Shipped
+
+- `rtl/circ_buffer.sv` — BRAM-inferable ring, pre/post split, freeze, registered read path.
+- `tb/test_circ_buffer.py` — wrap, reject trigger before pre-fill, exact POST writes then freeze, chronological dump via `oldest_addr`, crossing sample at index `PRE-1`, `clear` unfreezes without wiping memory.
+- `pytest tb/test_circ_buffer.py` — 7/7 passed. UART tests still green.
+
+### Why this memory style / freeze timing
+
+A ring that keeps writing until the post-window is full, then freezes. Trigger is ignored until `PRE_TRIGGER` writes this run so the pre-window is not reset junk. Freeze after `POST = DEPTH - PRE_TRIGGER` **subsequent** writes; the crossing sample is already stored because `trigger_pulse` is one cycle late. After freeze, `oldest_addr` is the next write pointer, so chronological dump is `(oldest_addr + i) % DEPTH` even after wrap. `clear`/`rst` reset pointers only — resetting the array would break Block RAM inference. Write and read are separate; `rd_data` is registered (1-cycle latency).
+
+### Alternatives considered
+
+- **Rejected: combinational freeze-before-write.** Would drop the sample that crossed threshold — the one you actually care about.
+- **Rejected: async/sync reset of the memory array.** Infers LUT RAM, not BRAM, on Artix-7.
+- **Rejected: smart buffer that also owns idle/filling/ready.** That policy belongs in `capture_ctrl` so the BRAM stays a dumb ring in an interview.
+
+### Timing numbers
+
+- Hardware: 2048 × 12-bit, 512 pre / 1536 post.
+- At 1 MSPS: pre ≈ **0.512 ms**, full window ≈ **2.048 ms**. The earlier “~2 ms” note was the full buffer, not the pre-window.
+- Sim tests: `DEPTH=16`, `PRE_TRIGGER=4`.
+- UART dump later walks physical addresses; account for 1-cycle read latency.
+
+### Explain out loud
+
+- How does pre-trigger survive wrap? (`oldest_addr` after freeze.)
+- How do we freeze without losing the sample that crossed threshold? (write on `sample_valid`, pulse next cycle, that write is last pre.)
+- Why not reset the BRAM array?
+
+### Open questions
+
+None on depth/split. `clear` is a 1-cycle strobe from the controller; dump must not read while `wr_en` hits the same address (dump only after freeze).
+
+---
+
 ## 2026-09-09 — trigger detect
 
 ### Shipped
