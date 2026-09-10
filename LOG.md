@@ -4,6 +4,50 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — capture_top (synthesizable)
+
+### Shipped
+
+- `rtl/capture_top.sv` — board-shaped top, no ADC model, no XDC, no LED names.
+- Ports: `clk`, `rst`, `uart_rx`, `uart_tx`, `adc_cs_n`, `adc_sclk`, `adc_sdata`, `arm_btn`, `status[1:0]`.
+- Instantiates `adc_spi`, `capture_ctrl`, `uart_dump` (owns `uart_tx`), `uart_rx`, `host_cmd`.
+- Hardware defaults: `DEPTH=2048`, `PRE=512`, `CLKS_PER_BIT=868`, `CLKS_PER_SCLK=5`, `SAMPLE_PERIOD_CLKS=100`. `HYSTERESIS=16` matches `capture_ctrl`.
+- `tb/capture_top_tb.sv` — `adc_ad7476a_model` as a sibling, same idea as `adc_spi_tb`. Small sim params.
+- `tb/test_capture_top.py` — ARM via CT UART, ARM via `arm_btn` rising edge. Both dump a TC frame.
+- `pytest tb/test_capture_top.py tb/test_uart_tx.py` and `pytest tb/` green.
+
+### Why 2-FF + rising-edge on arm_btn
+
+`arm` on `capture_ctrl` is a 1-cycle strobe. An async Basys/Arty button is a dirty level. Feeding it raw would hold FILLING's `clear`/`arm` for as long as the finger is down and would violate CDC. 2-FF sync then `arm_btn_s & ~arm_btn_d` is one clean pulse per press, OR'd with UART `arm_pulse`. Level-sync without edge detect was rejected: a stuck button would re-arm every cycle in READY.
+
+Threshold still only from `host_cmd` (default `0x800`). Button path does not set it.
+
+Dump still on `capture_ready` rising edge, not on arm.
+
+### Alternatives considered
+
+- **Rejected: putting the ADC model inside `capture_top`.** That file has to synth.
+- **Rejected: XDC / LED names.** No board in hand; `status[1:0]` is enough for later.
+- **Rejected: debounce counter.** Not asked; 2-FF + edge is the interview CDC story. Bounce is a board bring-up problem.
+
+### Timing numbers
+
+- Button pulse appears two clocks after the async rising edge (metastability flops) plus one more flop of history.
+- UART ARM still ~0.52 ms at 115200. Button ARM is a few clocks.
+- Hardware dump of 2048 samples unchanged: ≈ 0.36 s at 115200.
+
+### Explain out loud
+
+- Why not wire `arm_btn` straight into `capture_ctrl.arm`?
+- Rising-edge vs level-sync — what does a held button do?
+- `capture_top` vs `capture_sim_top`: which one has `analog_code`, and why?
+
+### Open questions
+
+XDC once a Pmod is plugged in. CI so `pytest tb/` runs on push.
+
+---
+
 ## 2026-09-09 — capture_sim_top host UART
 
 ### Shipped
