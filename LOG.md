@@ -4,6 +4,58 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — UART dump frame + host logger
+
+### Shipped
+
+- Frame documented in `host/frame.py` (this is the source of truth; RTL dump must match).
+- `host/frame.py` — `pack_frame` / `parse_frame`, `FrameError`.
+- `host/capture_logger.py` — `--input file.bin` or `-` (stdin) → CSV; `--png` optional; `--port` stub (needs hardware).
+- `tb/test_capture_logger.py` — round-trip, bad xor/magic/truncated, 12-bit mask, CSV from fake bytes.
+- `pytest tb/test_capture_logger.py` — 6 passed, 1 skipped (PNG: numpy/matplotlib import can hang in this environment; CLI still has `--png`).
+- `requirements.txt` — numpy, matplotlib (for plots on a real machine).
+
+### Frame format
+
+Little-endian. Length `7 + 2*N + 1 + 2`.
+
+| Offset | Size | Name | Value |
+|---|---|---|---|
+| 0 | 1 | MAGIC0 | `0x54` `'T'` |
+| 1 | 1 | MAGIC1 | `0x43` `'C'` |
+| 2 | 1 | VER | `0x01` |
+| 3 | 2 | N | uint16 LE sample count |
+| 5 | 2 | PRE | uint16 LE pre-trigger count |
+| 7 | 2N | SAMPLES | N × uint16 LE, bits[11:0]=ADC, bits[15:12]=0 |
+| 7+2N | 1 | XOR8 | XOR of MAGIC0 through last sample byte |
+| 8+2N | 2 | TRAILER | `0x0D 0x0A` |
+
+Sample `i=0` is oldest. Sample `i=PRE-1` is the trigger sample. Sample `i=PRE` is first post.
+
+At 115200 8N1, a 2048-sample dump is 4106 bytes ≈ 0.36 s.
+
+### Why this packing
+
+16-bit LE, 12-bit right-aligned: hex dumps are readable, numpy `uint16` on x86 is a straight `frombuffer`. XOR8 is a “UART dropped a byte” check, cheap in FPGA (running XOR while shifting BRAM out). XOR covers header+samples only, not itself or the trailer. CRLF is a terminal-visible end and a resync mark if the host becomes a stream parser later.
+
+### Alternatives considered
+
+- **Rejected: packed 12-bit** (3 bytes / 2 samples). Denser on 115200, miserable to debug, easy to desync.
+- **Rejected: 16-bit big-endian.** Host is LE; BE would byteswap every capture for no RTL win.
+- **Rejected: no checksum.** Silent UART drops would plot garbage and waste interview time.
+
+### Explain out loud
+
+- Why 16-bit LE over packed 12-bit?
+- XOR is over the payload only; CRLF is not in the XOR. Why?
+- Trigger is sample `PRE-1`; oldest is `i=0`.
+
+### Open questions
+
+Live `--port` UART capture once a board exists.
+
+---
+
 ## 2026-09-09 — ADC SPI (AD7476A)
 
 ### Shipped

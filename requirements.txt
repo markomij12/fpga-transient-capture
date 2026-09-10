@@ -1,2 +1,4 @@
 cocotb>=2.0
 pytest
+numpy
+matplotlib
