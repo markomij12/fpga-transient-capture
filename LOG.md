@@ -4,6 +4,60 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — host_cmd (CT command format)
+
+### Shipped
+
+- `rtl/host_cmd.sv` — byte-strobe parser (`rx_valid` / `rx_data`). No `uart_rx` inside.
+- `host/cmd.py` — pack/xor helpers (`pack_arm`, `pack_set_thresh`). Source of truth for the wire format, same role as `host/frame.py` for TC dumps.
+- `tb/test_host_cmd.py` — default thresh, ARM, SET_THRESH, 12-bit mask, bad magic/xor/len, unknown CMD, SET then ARM.
+- `pytest tb/test_host_cmd.py tb/test_uart_tx.py` — green.
+
+### Locked format (host → FPGA)
+
+Little-endian. Opposite direction from the dump frame. Dump magic is `TC` (`0x54 0x43`); commands are `CT` (`0x43 0x54`) so a host that hex-dumps the line can tell which way a blob is going.
+
+| Offset | Size | Name | Value |
+|---|---|---|---|
+| 0 | 1 | MAGIC0 | `0x43` `'C'` |
+| 1 | 1 | MAGIC1 | `0x54` `'T'` |
+| 2 | 1 | VER | `0x01` |
+| 3 | 1 | CMD | `0x01` ARM (no payload) or `0x02` SET_THRESH (uint16 LE) |
+| 4 | 1 | LEN | payload byte count (`0` or `2`) |
+| 5.. | LEN | PAYLOAD | ARM: empty. SET_THRESH: uint16 LE |
+| last | 1 | XOR8 | XOR of MAGIC0 through last payload byte (not the XOR byte). **No trailer.** |
+
+ARM is 6 bytes. SET_THRESH is 8 bytes. XOR covers header+payload only, same rule as the TC dump (dump also skips its own XOR and trailer).
+
+### Why a byte FSM, not uart_rx inside
+
+`uart_rx` already turns the wire into 1-cycle strobes. Keeping `host_cmd` on bytes means it tests without bit timing, and the two modules can be written in parallel. Parent wires `uart_rx` → `host_cmd` in the tops.
+
+Default threshold `12'h800` (mid-scale). SET_THRESH stores `[11:0]` of the uint16 (`0xFFFF` → `0xFFF`). `arm_pulse` / `cmd_error` are registered 1-cycle; never both on the same command. Unknown CMD with LEN 0 or 2 is consumed through XOR then `cmd_error`. LEN > 2 errors immediately so a garbage LEN cannot stall the parser.
+
+### Alternatives considered
+
+- **Rejected: folding the parser into `uart_rx`.** Mixes baud timing with protocol; worse standalone tests.
+- **Rejected: a trailer on CT.** Dump needs CRLF for a terminal-visible end. Commands are short and already framed by LEN+XOR.
+- **Rejected: threshold as a bitstream generic.** Host must be able to change it without re-synth.
+
+### Timing numbers
+
+- Pulse fires on the posedge that samples the XOR byte (or the early-error byte).
+- UART still 115200 8N1; a 6-byte ARM is 60 bits ≈ 0.52 ms on the wire.
+
+### Explain out loud
+
+- Why `CT` not `TC`? (direction; a hex dump of TX vs RX must not collide)
+- XOR does not include itself. Why?
+- What does a bad LEN vs unknown CMD do, and why bound LEN at 2?
+
+### Open questions
+
+Wire `rx` into `capture_sim_top`. Threshold comes from `host_cmd` only (drop the competing top-level pin).
+
+---
+
 ## 2026-09-09 — UART RX
 
 ### Shipped
