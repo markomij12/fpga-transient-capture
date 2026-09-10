@@ -4,6 +4,43 @@ Working notes for the transient-capture FPGA. Newest entry first.
 
 ---
 
+## 2026-09-09 — UART RX
+
+### Shipped
+
+- `rtl/uart_rx.sv` — 8N1 receiver, parameterized `CLKS_PER_BIT` (hardware 868, tests 8).
+- `tb/test_uart_rx.py` — idle, known bytes (`00 FF 55 A5 31`), false start, bad stop, back-to-back.
+- `pytest tb/test_uart_rx.py tb/test_uart_tx.py` — both runners green. `uart_tx` unchanged.
+
+### Why this sampling
+
+Match the TX testbench `recv_byte`: detect falling `rx`, sample the start bit at midpoint (`clk_cnt == CLKS_PER_BIT/2 - 1`, T4 when the divider is 8), then sample data/stop every full bit. Start must stay low and stop must be high, else drop the frame (`rx_valid` stays 0). `rx_valid` is a registered 1-cycle pulse on the stop midpoint with `rx_data` presented that cycle.
+
+No 2-FF sync on `rx` inside this block. Extra delay would shift the sample point relative to `uart_tx` at the sim divider of 8. Button debounce/sync is a board-top problem, not a UART FSM problem.
+
+### Alternatives considered
+
+- **Rejected: oversampling majority vote.** Heavier for Icarus and not needed at 115200 with a 100 MHz clock (868 clocks/bit).
+- **Rejected: 2-FF sync in `uart_rx`.** Would still work on hardware (868 >> 2) but would break midpoint math vs `recv_byte` at `CLKS_PER_BIT=8`.
+
+### Timing numbers
+
+- Hardware: 100 MHz / 115200 ≈ 868 clocks/bit; midpoint at count 433.
+- Sim: 8 clocks/bit; start sampled at T4; `rx_valid` during the stop bit, before a full-bit `drive_byte` returns — tests monitor in parallel.
+- `drive_byte` / TX start bit is 8 clocks low. Detect on first `rx==0`.
+
+### Explain out loud
+
+- Why midpoint, not the edge? (edge is the noisiest point; midpoint is where `recv_byte` already samples TX)
+- What happens on a 1–2 clock glitch? (false start, back to IDLE, no pulse)
+- Why is `rx_valid` 1-cycle and registered?
+
+### Open questions
+
+Host command parser (`host_cmd`) on these bytes. Wire into `capture_sim_top` after that.
+
+---
+
 ## 2026-09-09 — README / Vivado notes
 
 ### Shipped
